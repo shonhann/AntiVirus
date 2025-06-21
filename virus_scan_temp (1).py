@@ -60,4 +60,4 @@ def iterate_files(folder_path):
         
 
 
-iterate_files(folder_path=r"C:\Users\danie\Desktop\antivirus")
+iterate_files(folder_path=r"Your file")
