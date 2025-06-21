@@ -1,79 +1,63 @@
 import os
-import tkinter as tk
-from tkinter import filedialog, messagebox, scrolledtext
+import requests
+import time
 
-# Simulated virus keywords
-SUSPICIOUS_KEYWORDS = ["virus", "malware", "trojan", "worm", "spyware", "ransomware"]
+virus_total_api_scan_url = 'https://www.virustotal.com/vtapi/v2/file/scan'
+virus_total_api_report_url = 'https://www.virustotal.com/vtapi/v2/file/report'
 
-def scan_folder(folder_path):
-    infected_files = []
+virus_toatl_api_key = "5aed02f931a27acfd76cec00df0c2a12f46397b5759576531a237516bcbfc34f"
 
-    for root, dirs, files in os.walk(folder_path):
-        for filename in files:
-            file_path = os.path.join(root, filename)
-            try:
-                with open(file_path, 'r', errors='ignore') as f:
-                    content = f.read().lower()
-                    if any(keyword in content for keyword in SUSPICIOUS_KEYWORDS):
-                        infected_files.append(file_path)
-            except Exception as e:
-                print(f"Could not read {file_path}: {e}")
-    
-    return infected_files
 
-def choose_folder():
-    folder = filedialog.askdirectory()
-    if folder:
-        folder_entry.delete(0, tk.END)
-        folder_entry.insert(0, folder)
-
-def start_scan():
-    folder = folder_entry.get()
-    result_text.delete(1.0, tk.END)
-
-    if not os.path.isdir(folder):
-        messagebox.showerror("Error", "Please choose a valid folder.")
-        return
-
-    result_text.insert(tk.END, f"Scanning folder:\n{folder}\n\n")
-    infected = scan_folder(folder)
-
-    if infected:
-        result_text.insert(tk.END, "⚠️ Infected files found:\n\n")
-        for f in infected:
-            result_text.insert(tk.END, f + "\n")
+def scan_file(file_path):
+    print("Scanning: ", file_path)
+    response = send_scan_request(file_path)
+    is_virus = get_report(scan_id=response['scan_id'])
+    if is_virus:
+        print("VIRUS DETECTED!!! Filepath: ", file_path)
     else:
-        result_text.insert(tk.END, "✅ No infected files found.")
+        print("{} is not virus".format(file_path))
 
-# Create the GUI
-root = tk.Tk()
-root.title("🛡️ Simple Virus Scanner")
-root.geometry("600x400")
-root.config(bg="#1e1e1e")
 
-# Styling
-style = {
-    "bg": "#1e1e1e",
-    "fg": "#ffffff",
-    "font": ("Segoe UI", 10)
-}
+def send_scan_request(file_path):
+    params = {'apikey': virus_toatl_api_key}
 
-title_label = tk.Label(root, text="🛡️ Simple Virus Scanner", font=("Segoe UI", 16, "bold"), bg="#1e1e1e", fg="#00ff88")
-title_label.pack(pady=10)
+    file_content = open(file_path, 'rb')
+    filename = os.path.basename(file_path)
+    files = {'file': (filename, file_content)}
 
-folder_frame = tk.Frame(root, bg="#1e1e1e")
-folder_frame.pack(pady=5)
+    response = requests.post(virus_total_api_scan_url, files=files, params=params)
+    return response.json()
 
-folder_entry = tk.Entry(folder_frame, width=50, **style)
-folder_entry.pack(side=tk.LEFT, padx=5)
+def get_report(scan_id):
+    params = {'apikey': virus_toatl_api_key, 'resource': scan_id}
+    response = requests.get(virus_total_api_report_url, params=params)
+    if not response:
+        raise Exception("Unexpected Error in response")
+    
+    if response.status_code == 200:
+        result = response.json()
+        if result["verbose_msg"] == "Your resource is queued for analysis":
+            print("Waiting for file to be analyzed...")
+            time.sleep(5)
+            get_report(scan_id)
+            return False
+        else:
+            return result["positives"] > 0
+    else:
+        print("Received unexpected response with status code:", response.status_code)
+        return False
 
-browse_button = tk.Button(folder_frame, text="Browse", command=choose_folder, bg="#00ff88", fg="#000", font=("Segoe UI", 9, "bold"))
-browse_button.pack(side=tk.LEFT, padx=5)
 
-scan_button = tk.Button(root, text="Start Scan", command=start_scan, bg="#00c0ff", fg="#000", font=("Segoe UI", 10, "bold"))
-scan_button.pack(pady=10)
+def iterate_files(folder_path):
+    for filename in os.listdir(folder_path):
+        full_path = os.path.join(folder_path, filename)
 
-result_text = scrolledtext.ScrolledText(root, wrap=tk.WORD, width=70, height=15, bg="#252526", fg="#ffffff", font=("Consolas", 10))
-result_text.pack(padx=10, pady=10)
+        if os.path.isdir(full_path) == True:
+            iterate_files(full_path)
+        else:
+            scan_file(full_path)
+            
+        
 
-root.mainloop()
+
+iterate_files(folder_path=r"C:\Users\danie\Desktop\antivirus")
